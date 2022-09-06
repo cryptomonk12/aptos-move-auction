@@ -1,4 +1,4 @@
-module auction::marketplace {
+module auction::marketplace{
     use std::signer;
     use std::option;
     use std::string;
@@ -9,6 +9,7 @@ module auction::marketplace {
     use aptos_framework::timestamp;
     use aptos_framework::aptos_coin::AptosCoin;
     use aptos_framework::coin;
+    use aptos_framework::managed_coin;
 
     const MODULE_ADMIN: address = @auction;
 
@@ -45,7 +46,6 @@ module auction::marketplace {
         id: TokenId,
         bid: u64,
     }
-
     struct ClaimTokenEvent has store, drop {
         id: TokenId,
     }
@@ -83,6 +83,11 @@ module auction::marketplace {
         let auction_data = borrow_global_mut<AuctionData>(MODULE_ADMIN);
         let auction_items = &mut auction_data.auction_items;
         let token_id = token::create_token_id_raw(creator, string::utf8(collection_name), string::utf8(name),0);
+
+        if (!coin::is_account_registered<AptosCoin>(seller_addr)){
+            managed_coin::register<AptosCoin>(seller);
+        };
+
         assert!(!table::contains(auction_items, copy token_id), 1);
 
         event::emit_event<AuctionEvent>(
@@ -169,8 +174,8 @@ module auction::marketplace {
 
         let locked_coins = &mut borrow_global_mut<CoinEscrow>(MODULE_ADMIN).locked_coins;
         if (table::contains(locked_coins, token_id)){
-          let coins = table::remove(locked_coins, token_id);
-          coin::deposit<AptosCoin>(auction_item.seller, coins);
+            let coins = table::remove(locked_coins, token_id);
+            coin::deposit<AptosCoin>(auction_item.seller, coins);
         };
         let AuctionItem{ seller:_, sell_price: _, duration: _, start_time: _, current_bid: _, current_bidder: _, locked_token: locked_token } = table::remove(auction_items, token_id);
 
@@ -207,5 +212,13 @@ module auction::marketplace {
     fun is_auction_complete(start_time: u64, duration: u64): bool {
         let current_time = timestamp::now_seconds();
         current_time > start_time + duration
+    }
+
+    #[test_only]
+    public fun isLockedToken(tokenId: TokenId):bool acquires AuctionData{
+        let auction_data = borrow_global_mut<AuctionData>(MODULE_ADMIN);
+        let auction_items = &mut auction_data.auction_items;
+
+        table::contains(auction_items, tokenId)
     }
 }
